@@ -14,7 +14,6 @@ const int maxn = 1000000;
 int counter[maxn];
 #define rein ios_base::sync_with_stdio(0);cin.tie(0);cout.tie(0);
 
-// 比較向量，用於map的排序
 struct VectorCompare {
     bool operator()(const vector<int>& a, const vector<int>& b) const {
         if (a.size() != b.size()) {
@@ -24,20 +23,18 @@ struct VectorCompare {
     }
 };
 
-// 用於存儲頻繁項集及其支持度
 map<vector<int>, double, VectorCompare> itemsetSupport;
 double min_support_ratio;
 double min_support_count;
 int total_transactions;
 
-// FP樹的節點
 class TreeNode {
 public:
     int id;
     int count;
     TreeNode* parent;
     vector<TreeNode*> children;
-    TreeNode* link;  // 指向相同項的下一個節點
+    TreeNode* link;
     
     TreeNode(int id, int count, TreeNode *parent=NULL, TreeNode *link=NULL) {
         this->id = id;
@@ -53,12 +50,11 @@ public:
     }
 };
 
-// 頭表的節點
 class HeaderNode {
 public:
     int id;
     int count;
-    TreeNode* link;  // 指向FP樹中相應項的第一個節點
+    TreeNode* link;
     
     HeaderNode(int id, int count, TreeNode* link=NULL) {
         this->id = id; 
@@ -67,7 +63,6 @@ public:
     }
 };
 
-// 在節點的子節點中查找特定ID的節點
 TreeNode* find(TreeNode* node, int id) {
     if (!node) return nullptr;
     for (auto child : node->children) {
@@ -76,43 +71,32 @@ TreeNode* find(TreeNode* node, int id) {
     return nullptr;
 }
 
-// 比較函數：按支持度降序排序
 bool cmp(int a, int b) {
     return counter[a] > counter[b];
 }
 
-// 構建頭表
 vector<HeaderNode*> constructHeaderTable(int min_support_count) {
-    // 收集頻繁項
     vector<int> frequent_items;
     for (int i = 0; i < maxn; i++) {
         if (counter[i] >= min_support_count) {
             frequent_items.push_back(i);
         }
     }
-    
-    // 按支持度排序
     sort(frequent_items.begin(), frequent_items.end(), cmp);
-    
-    // 創建頭表
     vector<HeaderNode*> headerTable;
     for (int id : frequent_items) {
         headerTable.push_back(new HeaderNode(id, counter[id]));
     }
-    
     return headerTable;
 }
 
-// 過濾交易並按支持度排序
 void filterAndSortTransactions(vector<vector<int>>& transactions, const vector<HeaderNode*>& headerTable) {
-    // 創建項ID到排序權重的映射
     map<int, int> order;
     for (size_t i = 0; i < headerTable.size(); i++) {
         order[headerTable[i]->id] = i;
     }
     
     for (auto& transaction : transactions) {
-        // 過濾不頻繁的項
         vector<int> filtered;
         for (int item : transaction) {
             if (counter[item] >= min_support_count) {
@@ -120,71 +104,54 @@ void filterAndSortTransactions(vector<vector<int>>& transactions, const vector<H
             }
         }
         
-        // 按頭表順序排序（支持度降序）
-        sort(filtered.begin(), filtered.end(), 
-             [&order](int a, int b) { return order[a] < order[b]; });
-        
+        sort(filtered.begin(), filtered.end(),[&order](int a, int b) { return order[a] < order[b]; });
         transaction = filtered;
     }
 }
 
-// 構建FP樹
+
 TreeNode* buildFPTree(vector<vector<int>>& transactions, vector<HeaderNode*>& headerTable) {
-    TreeNode* root = new TreeNode(-1, 0);  // 根節點
-    
-    // 創建項ID到頭表節點的映射，方便快速查找
+    TreeNode* root = new TreeNode(-1, 0); 
     map<int, HeaderNode*> headerMap;
     for (auto header : headerTable) {
         headerMap[header->id] = header;
     }
     
-    // 將每筆交易添加到FP樹
     for (auto& transaction : transactions) {
         TreeNode* curr = root;
-        
         for (int item : transaction) {
-            // 查找當前節點是否已有此項的子節點
             TreeNode* child = find(curr, item);
             
             if (child) {
-                // 已存在，增加計數
                 child->count++;
                 curr = child;
             } else {
-                // 不存在，創建新節點
                 TreeNode* newNode = new TreeNode(item, 1, curr);
                 curr->children.push_back(newNode);
                 
-                // 更新頭表的鏈接
                 HeaderNode* header = headerMap[item];
                 if (!header->link) {
                     header->link = newNode;
                 } else {
-                    // 找到鏈的末尾
                     TreeNode* linkNode = header->link;
                     while (linkNode->link) {
                         linkNode = linkNode->link;
                     }
                     linkNode->link = newNode;
                 }
-                
-                // 更新當前節點
                 curr = newNode;
             }
         }
     }
-    
     return root;
 }
 
-// 從頭表中獲取條件模式基
 map<vector<int>, int> getConditionalPatternBase(HeaderNode* header) {
     map<vector<int>, int> patterns;
     TreeNode* node = header->link;
     
     while (node) {
         if (node->count > 0) {
-            // 收集從當前節點到根的路徑（不包括根和當前項）
             vector<int> path;
             TreeNode* parent = node->parent;
             
@@ -193,10 +160,8 @@ map<vector<int>, int> getConditionalPatternBase(HeaderNode* header) {
                 parent = parent->parent;
             }
             
-            reverse(path.begin(), path.end());  // 路徑應該從根到葉
-            
+            reverse(path.begin(), path.end());
             if (!path.empty()) {
-                // 合併相同路徑的計數
                 if (patterns.find(path) != patterns.end()) {
                     patterns[path] += node->count;
                 } else {
@@ -204,34 +169,22 @@ map<vector<int>, int> getConditionalPatternBase(HeaderNode* header) {
                 }
             }
         }
-        
-        node = node->link;  // 移動到下一個相同的項
+        node = node->link;
     }
-    
     return patterns;
 }
 
-// 從條件模式基構建條件FP樹
 void fpGrowth(vector<HeaderNode*>& headerTable, vector<int>& prefix, double min_support_count) {
-    // 從頻率最低的項開始處理
     for (int i = headerTable.size() - 1; i >= 0; i--) {
         HeaderNode* header = headerTable[i];
-        
-        // 創建新的前綴
         vector<int> newPrefix = prefix;
         newPrefix.push_back(header->id);
-        
-        // 添加到頻繁項集
         itemsetSupport[newPrefix] = (double)header->count / total_transactions;
-        
-        // 獲取條件模式基
         map<vector<int>, int> conditionalBase = getConditionalPatternBase(header);
-        
         if (conditionalBase.empty()) {
             continue;
         }
         
-        // 從條件模式基中計算每個項的支持度
         memset(counter, 0, sizeof(counter));
         
         for (const auto& pair : conditionalBase) {
@@ -243,20 +196,17 @@ void fpGrowth(vector<HeaderNode*>& headerTable, vector<int>& prefix, double min_
             }
         }
         
-        // 構建條件FP樹的頭表
         vector<HeaderNode*> conditionalHeaderTable = constructHeaderTable(min_support_count);
         
         if (conditionalHeaderTable.empty()) {
             continue;
         }
         
-        // 構建條件FP樹的交易
         vector<vector<int>> conditionalTransactions;
         for (const auto& pair : conditionalBase) {
             vector<int> transaction;
             const vector<int>& path = pair.first;
             
-            // 只保留滿足最小支持度的項
             for (int item : path) {
                 if (counter[item] >= min_support_count) {
                     transaction.push_back(item);
@@ -271,23 +221,18 @@ void fpGrowth(vector<HeaderNode*>& headerTable, vector<int>& prefix, double min_
         }
         
         if (conditionalTransactions.empty()) {
-            // 清理頭表
             for (auto node : conditionalHeaderTable) {
                 delete node;
             }
             continue;
         }
         
-        // 過濾和排序條件交易
         filterAndSortTransactions(conditionalTransactions, conditionalHeaderTable);
         
-        // 構建條件FP樹
         TreeNode* conditionalTree = buildFPTree(conditionalTransactions, conditionalHeaderTable);
         
-        // 遞歸挖掘條件FP樹
         fpGrowth(conditionalHeaderTable, newPrefix, min_support_count);
         
-        // 清理
         delete conditionalTree;
         for (auto node : conditionalHeaderTable) {
             delete node;
@@ -308,10 +253,6 @@ int main(int argc, char *argv[]) {
     string inputFileName = argv[2];
     string outputFileName = argv[3];
 
-    cout << "min_support: " << min_support_ratio << endl;
-    cout << "inputFileName: " << inputFileName << endl;
-    cout << "outputFileName: " << outputFileName << endl;
-
     inFile.open(inputFileName);
     if (!inFile) {
         cerr << "Unable to open file " << inputFileName << endl;
@@ -322,10 +263,8 @@ int main(int argc, char *argv[]) {
     stringstream ss;
     vector<vector<int>> transactions;
     
-    // 初始化計數器
     memset(counter, 0, sizeof(counter));
     
-    // 讀取交易數據
     while (getline(inFile, line)) {
         ss.str("");
         ss.clear();
@@ -337,7 +276,7 @@ int main(int argc, char *argv[]) {
         while (getline(ss, item, ',')) {
             int id = stoi(item);
             transaction.push_back(id);
-            counter[id]++;  // 計算每個項的頻率
+            counter[id]++;
         }
         
         transactions.push_back(transaction);
@@ -350,7 +289,6 @@ int main(int argc, char *argv[]) {
     cout << "Total transactions: " << total_transactions << endl;
     cout << "Min support count: " << min_support_count << endl;
     
-    // 構建頭表
     vector<HeaderNode*> headerTable = constructHeaderTable(min_support_count);
     
     if (headerTable.empty()) {
@@ -358,24 +296,19 @@ int main(int argc, char *argv[]) {
         return 0;
     }
     
-    // 過濾和排序交易
     filterAndSortTransactions(transactions, headerTable);
     
-    // 構建FP樹
     TreeNode* fpTree = buildFPTree(transactions, headerTable);
-    
-    // 先將單項頻繁集加入結果
+
     for (auto header : headerTable) {
         vector<int> singleItem = {header->id};
         double support = (double)header->count / total_transactions;
         itemsetSupport[singleItem] = support;
     }
     
-    // 挖掘頻繁項集
     vector<int> emptyPrefix;
     fpGrowth(headerTable, emptyPrefix, min_support_count);
-    
-    // 輸出結果
+
     outFile.open(outputFileName);
     if (!outFile) {
         cerr << "Unable to open output file " << outputFileName << endl;
@@ -397,10 +330,9 @@ int main(int argc, char *argv[]) {
         outFile << endl;
     }
     
-    cout << "Found " << itemsetSupport.size() << " frequent itemsets." << endl;
+    // cout << "Found " << itemsetSupport.size() << " frequent itemsets." << endl;
     outFile.close();
     
-    // 清理內存
     delete fpTree;
     for (auto header : headerTable) {
         delete header;
