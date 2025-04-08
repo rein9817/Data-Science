@@ -255,11 +255,6 @@ int main(int argc, char *argv[]) {
     string outputFileName = argv[3];
 
     inFile.open(inputFileName);
-    if (!inFile) {
-        cerr << "Unable to open file " << inputFileName << endl;
-        exit(1); 
-    }
-
     string line;
     stringstream ss;
     vector<vector<int>> transactions;
