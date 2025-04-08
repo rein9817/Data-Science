@@ -82,16 +82,7 @@ bool cmp(int a, int b) {
 }
 
 // 構建頭表
-vector<HeaderNode*> constructHeaderTable(vector<vector<int>>& transactions, double min_support_count) {
-    memset(counter, 0, sizeof(counter));
-    
-    // 計算每個項的支持度
-    for (auto& transaction : transactions) {
-        for (int item : transaction) {
-            counter[item]++;
-        }
-    }
-    
+vector<HeaderNode*> constructHeaderTable(int min_support_count) {
     // 收集頻繁項
     vector<int> frequent_items;
     for (int i = 0; i < maxn; i++) {
@@ -113,7 +104,7 @@ vector<HeaderNode*> constructHeaderTable(vector<vector<int>>& transactions, doub
 }
 
 // 過濾交易並按支持度排序
-void filterAndSortTransactions(vector<vector<int>>& transactions, vector<HeaderNode*>& headerTable) {
+void filterAndSortTransactions(vector<vector<int>>& transactions, const vector<HeaderNode*>& headerTable) {
     // 創建項ID到排序權重的映射
     map<int, int> order;
     for (size_t i = 0; i < headerTable.size(); i++) {
@@ -129,7 +120,7 @@ void filterAndSortTransactions(vector<vector<int>>& transactions, vector<HeaderN
             }
         }
         
-        // 按頭表順序排序
+        // 按頭表順序排序（支持度降序）
         sort(filtered.begin(), filtered.end(), 
              [&order](int a, int b) { return order[a] < order[b]; });
         
@@ -186,24 +177,32 @@ TreeNode* buildFPTree(vector<vector<int>>& transactions, vector<HeaderNode*>& he
     return root;
 }
 
-// 從一個節點獲取其條件模式基
-vector<pair<vector<int>, int>> getConditionalPatternBase(HeaderNode* header) {
-    vector<pair<vector<int>, int>> patterns;
+// 從頭表中獲取條件模式基
+map<vector<int>, int> getConditionalPatternBase(HeaderNode* header) {
+    map<vector<int>, int> patterns;
     TreeNode* node = header->link;
     
     while (node) {
-        // 收集從當前節點到根的路徑（不包括根和當前項）
-        vector<int> path;
-        TreeNode* parent = node->parent;
-        
-        while (parent && parent->id != -1) {
-            path.push_back(parent->id);
-            parent = parent->parent;
-        }
-        
-        if (!path.empty()) {
+        if (node->count > 0) {
+            // 收集從當前節點到根的路徑（不包括根和當前項）
+            vector<int> path;
+            TreeNode* parent = node->parent;
+            
+            while (parent && parent->id != -1) {
+                path.push_back(parent->id);
+                parent = parent->parent;
+            }
+            
             reverse(path.begin(), path.end());  // 路徑應該從根到葉
-            patterns.push_back({path, node->count});
+            
+            if (!path.empty()) {
+                // 合併相同路徑的計數
+                if (patterns.find(path) != patterns.end()) {
+                    patterns[path] += node->count;
+                } else {
+                    patterns[path] = node->count;
+                }
+            }
         }
         
         node = node->link;  // 移動到下一個相同的項
@@ -212,9 +211,9 @@ vector<pair<vector<int>, int>> getConditionalPatternBase(HeaderNode* header) {
     return patterns;
 }
 
-// 遞歸挖掘頻繁項集
+// 從條件模式基構建條件FP樹
 void fpGrowth(vector<HeaderNode*>& headerTable, vector<int>& prefix, double min_support_count) {
-    // 對每個頭表項處理（從最不頻繁的開始）
+    // 從頻率最低的項開始處理
     for (int i = headerTable.size() - 1; i >= 0; i--) {
         HeaderNode* header = headerTable[i];
         
@@ -226,27 +225,56 @@ void fpGrowth(vector<HeaderNode*>& headerTable, vector<int>& prefix, double min_
         itemsetSupport[newPrefix] = (double)header->count / total_transactions;
         
         // 獲取條件模式基
-        vector<pair<vector<int>, int>> conditionalBase = getConditionalPatternBase(header);
+        map<vector<int>, int> conditionalBase = getConditionalPatternBase(header);
         
         if (conditionalBase.empty()) {
             continue;
         }
         
-        // 創建條件FP樹的交易數據
-        vector<vector<int>> conditionalTransactions;
-        for (auto& pattern : conditionalBase) {
-            vector<int>& path = pattern.first;
-            int count = pattern.second;
+        // 從條件模式基中計算每個項的支持度
+        memset(counter, 0, sizeof(counter));
+        
+        for (const auto& pair : conditionalBase) {
+            const vector<int>& path = pair.first;
+            int count = pair.second;
             
-            for (int j = 0; j < count; j++) {
-                conditionalTransactions.push_back(path);
+            for (int item : path) {
+                counter[item] += count;
             }
         }
         
         // 構建條件FP樹的頭表
-        vector<HeaderNode*> conditionalHeaderTable = constructHeaderTable(conditionalTransactions, min_support_count);
+        vector<HeaderNode*> conditionalHeaderTable = constructHeaderTable(min_support_count);
         
         if (conditionalHeaderTable.empty()) {
+            continue;
+        }
+        
+        // 構建條件FP樹的交易
+        vector<vector<int>> conditionalTransactions;
+        for (const auto& pair : conditionalBase) {
+            vector<int> transaction;
+            const vector<int>& path = pair.first;
+            
+            // 只保留滿足最小支持度的項
+            for (int item : path) {
+                if (counter[item] >= min_support_count) {
+                    transaction.push_back(item);
+                }
+            }
+            
+            if (!transaction.empty()) {
+                for (int j = 0; j < pair.second; j++) {
+                    conditionalTransactions.push_back(transaction);
+                }
+            }
+        }
+        
+        if (conditionalTransactions.empty()) {
+            // 清理頭表
+            for (auto node : conditionalHeaderTable) {
+                delete node;
+            }
             continue;
         }
         
@@ -254,12 +282,13 @@ void fpGrowth(vector<HeaderNode*>& headerTable, vector<int>& prefix, double min_
         filterAndSortTransactions(conditionalTransactions, conditionalHeaderTable);
         
         // 構建條件FP樹
-        if (!conditionalTransactions.empty()) {
-            // 遞歸處理
-            fpGrowth(conditionalHeaderTable, newPrefix, min_support_count);
-        }
+        TreeNode* conditionalTree = buildFPTree(conditionalTransactions, conditionalHeaderTable);
+        
+        // 遞歸挖掘條件FP樹
+        fpGrowth(conditionalHeaderTable, newPrefix, min_support_count);
         
         // 清理
+        delete conditionalTree;
         for (auto node : conditionalHeaderTable) {
             delete node;
         }
@@ -293,6 +322,9 @@ int main(int argc, char *argv[]) {
     stringstream ss;
     vector<vector<int>> transactions;
     
+    // 初始化計數器
+    memset(counter, 0, sizeof(counter));
+    
     // 讀取交易數據
     while (getline(inFile, line)) {
         ss.str("");
@@ -303,7 +335,9 @@ int main(int argc, char *argv[]) {
         string item;
         
         while (getline(ss, item, ',')) {
-            transaction.push_back(stoi(item));
+            int id = stoi(item);
+            transaction.push_back(id);
+            counter[id]++;  // 計算每個項的頻率
         }
         
         transactions.push_back(transaction);
@@ -317,7 +351,7 @@ int main(int argc, char *argv[]) {
     cout << "Min support count: " << min_support_count << endl;
     
     // 構建頭表
-    vector<HeaderNode*> headerTable = constructHeaderTable(transactions, min_support_count);
+    vector<HeaderNode*> headerTable = constructHeaderTable(min_support_count);
     
     if (headerTable.empty()) {
         cout << "No frequent items found." << endl;
@@ -330,6 +364,13 @@ int main(int argc, char *argv[]) {
     // 構建FP樹
     TreeNode* fpTree = buildFPTree(transactions, headerTable);
     
+    // 先將單項頻繁集加入結果
+    for (auto header : headerTable) {
+        vector<int> singleItem = {header->id};
+        double support = (double)header->count / total_transactions;
+        itemsetSupport[singleItem] = support;
+    }
+    
     // 挖掘頻繁項集
     vector<int> emptyPrefix;
     fpGrowth(headerTable, emptyPrefix, min_support_count);
@@ -339,13 +380,6 @@ int main(int argc, char *argv[]) {
     if (!outFile) {
         cerr << "Unable to open output file " << outputFileName << endl;
         exit(1);
-    }
-    
-    // 輸出單項頻繁集
-    for (auto header : headerTable) {
-        vector<int> singleItem = {header->id};
-        double support = (double)header->count / total_transactions;
-        itemsetSupport[singleItem] = support;
     }
     
     for (const auto& pair : itemsetSupport) {
