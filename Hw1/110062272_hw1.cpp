@@ -241,6 +241,7 @@ void fpGrowth(vector<HeaderNode*>& headerTable, vector<int>& prefix, double min_
 }
 
 int main(int argc, char *argv[]) {
+    rein
     ifstream inFile;
     ofstream outFile;
     
@@ -286,15 +287,10 @@ int main(int argc, char *argv[]) {
     total_transactions = transactions.size();
     min_support_count = min_support_ratio * total_transactions;
     
-    cout << "Total transactions: " << total_transactions << endl;
-    cout << "Min support count: " << min_support_count << endl;
+    // cout << "Total transactions: " << total_transactions << endl;
+    // cout << "Min support count: " << min_support_count << endl;
     
     vector<HeaderNode*> headerTable = constructHeaderTable(min_support_count);
-    
-    if (headerTable.empty()) {
-        cout << "No frequent items found." << endl;
-        return 0;
-    }
     
     filterAndSortTransactions(transactions, headerTable);
     
@@ -306,8 +302,8 @@ int main(int argc, char *argv[]) {
         itemsetSupport[singleItem] = support;
     }
     
-    vector<int> emptyPrefix;
-    fpGrowth(headerTable, emptyPrefix, min_support_count);
+    vector<int> prefix;
+    fpGrowth(headerTable, prefix, min_support_count);
 
     outFile.open(outputFileName);
     if (!outFile) {
@@ -327,7 +323,7 @@ int main(int argc, char *argv[]) {
         }
         
         outFile << ":" << fixed << setprecision(4) << support;
-        outFile << endl;
+        outFile << "\n";
     }
     
     // cout << "Found " << itemsetSupport.size() << " frequent itemsets." << endl;
