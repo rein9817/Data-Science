@@ -63,7 +63,7 @@ class CMAES_optimizer(Function):  # need to inherit this class "Function"
             for k in range(lambda_):
                 # Sample new solution
                 z = np.random.normal(0, 1, self.dim)
-                y[k] = np.dot(B, D * z)  # y_k = B*D*z_k
+                y[k] = np.dot(BD , z)  # y_k = B*D*z_k
                 x[k] = mean + sigma * y[k]  # x_k = m + sigma*y_k
                 
                 # Ensure bounds are respected
@@ -82,8 +82,7 @@ class CMAES_optimizer(Function):  # need to inherit this class "Function"
                 if f_values[k] == "ReachFunctionLimit" or self.eval_times >= FES:
                     print("ReachFunctionLimit")
                     return
-            
-            # Sort by fitness
+                
             sorted_indices = np.argsort(f_values)
             
             # Calculate weighted mean of selected points
