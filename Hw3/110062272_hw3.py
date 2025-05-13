@@ -42,26 +42,22 @@ class CMAES_optimizer(Function):  # need to inherit this class "Function"
         mean = np.random.uniform(self.lower, self.upper, self.dim)
         sigma = 0.3 * (self.upper - self.lower)  # step size
         
-        # Eigendecomposition variables
         B = np.eye(self.dim)  # B contains the eigenvectors
         D = np.ones(self.dim)  # D contains the eigenvalues (diagonal)
-        BD = B  # BD = B*D to sample, see below
-        
+        BD = B * D
+
         # Number of iterations already done
         g = 0
         
-        # Main loop
         while self.eval_times < FES:
             print('=====================FE=====================')
             print(self.eval_times)
             
-            # Create new population of search points and evaluate them
             x = np.zeros((lambda_, self.dim))
             y = np.zeros((lambda_, self.dim))
             f_values = np.zeros(lambda_)
             
             for k in range(lambda_):
-                # Sample new solution
                 z = np.random.normal(0, 1, self.dim)
                 y[k] = np.dot(BD , z)  # y_k = B*D*z_k
                 x[k] = mean + sigma * y[k]  # x_k = m + sigma*y_k
@@ -69,30 +65,24 @@ class CMAES_optimizer(Function):  # need to inherit this class "Function"
                 # Ensure bounds are respected
                 x[k] = np.clip(x[k], self.lower, self.upper)
                 
-                # Evaluate function
                 f_values[k] = self.f.evaluate(self.target_func, x[k])
                 self.eval_times += 1
                 
-                # Update optimal solution if better
                 if f_values[k] != "ReachFunctionLimit" and float(f_values[k]) < self.optimal_value:
                     self.optimal_solution[:] = x[k]
                     self.optimal_value = float(f_values[k])
                 
-                # Check if evaluation limit reached
                 if f_values[k] == "ReachFunctionLimit" or self.eval_times >= FES:
                     print("ReachFunctionLimit")
                     return
                 
             sorted_indices = np.argsort(f_values)
-            
-            # Calculate weighted mean of selected points
             y_w = np.zeros(self.dim)
             for i in range(mu):
                 idx = sorted_indices[i]
                 y_w += weights[i] * y[idx]
             
-            # Update mean
-            old_mean = mean.copy()
+            # old_mean = mean.copy()
             mean = mean + sigma * y_w
             
             # Update evolution paths
@@ -104,10 +94,7 @@ class CMAES_optimizer(Function):  # need to inherit this class "Function"
             p_sigma = (1 - c_sigma) * p_sigma + np.sqrt(c_sigma * (2 - c_sigma) * mu_eff) * np.dot(B, y_w)
             p_c = (1 - c_c) * p_c + h_sigma * np.sqrt(c_c * (2 - c_c) * mu_eff) * np.dot(B, y_w)
             
-            # Adapt covariance matrix
-            w_io = np.ones(mu)  # Weights for C matrix update
             
-            # Rank-mu update
             rank_mu_update = np.zeros((self.dim, self.dim))
             for i in range(mu):
                 idx = sorted_indices[i]
@@ -120,8 +107,7 @@ class CMAES_optimizer(Function):  # need to inherit this class "Function"
             # Update step size
             sigma = sigma * np.exp((c_sigma / d_sigma) * (np.linalg.norm(p_sigma) / np.sqrt(self.dim) - 1))
             
-            # Update B and D from C (eigendecomposition)
-            if g % 1 == 0:  # Perform eigendecomposition every iteration (adjust frequency as needed)
+            if g % 1 == 0:  
                 C = np.triu(C) + np.triu(C, 1).T  # Enforce symmetry
                 D, B = np.linalg.eigh(C)
                 D = np.sqrt(np.maximum(1e-10, D))  # D contains the standard deviations
@@ -143,15 +129,13 @@ if __name__ == '__main__':
             fes = 2000
         else:
             fes = 2500
-        
-        # you should implement your optimizer
+            
         op = CMAES_optimizer(func_num)
         op.run(fes)
         
         best_input, best_value = op.get_optimal()
         print(best_input, best_value)
         
-        # change the name of this file to your student_ID and it will output properlly
         with open("{}_function{}.txt".format(__file__.split('_')[0], func_num), 'w+') as f:
             for i in range(op.dim):
                 f.write("{}\n".format(best_input[i]))
